@@ -10,14 +10,21 @@ export interface ChartMetadata {
   mttStage: MttStage | '';
 }
 
-export type HandActions = Record<string, string>;
+export interface StackRanges {
+  fold: string[];
+  call: string[];
+  all_in: string[];
+  raise: string[];
+  raise_2: string[];
+  raise_3: string[];
+}
 
 export interface StackTierInput {
   stackDepth: string | number;
   filename: string;
-  hands: HandActions;
-  sizings?: Record<string, string>;
-  mixedStrategies?: Record<string, unknown>;
+  ranges: StackRanges;
+  sizings: Record<string, string>;
+  mixedStrategies: Record<string, unknown>;
 }
 
 export interface StackTier extends Omit<StackTierInput, 'stackDepth'> {
