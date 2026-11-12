@@ -21,11 +21,22 @@ export function buildBackup(workspaces: Workspace[]) {
       extraSeats: workspace.extraSeats,
       mttStage: workspace.mttStage,
       stackTiers: workspace.stackTiers.map((tier) => ({
-        stackDepth: tier.stackDepth,
+        stackDepth: `${tier.stackDepth}BB`,
         filename: tier.filename,
-        hands: tier.hands,
-        ...(tier.sizings ? { sizings: tier.sizings } : {}),
-        ...(tier.mixedStrategies ? { mixedStrategies: tier.mixedStrategies } : {}),
+        ranges: {
+          fold: [...tier.ranges.fold],
+          call: [...tier.ranges.call],
+          all_in: [...tier.ranges.all_in],
+          raise: [...tier.ranges.raise],
+          raise_2: [...tier.ranges.raise_2],
+          raise_3: [...tier.ranges.raise_3],
+        },
+        sizings: {
+          R1: tier.sizings.R1 ?? '',
+          R2: tier.sizings.R2 ?? '',
+          R3: tier.sizings.R3 ?? '',
+        },
+        mixedStrategies: { ...tier.mixedStrategies },
       })),
     })),
   };
@@ -42,6 +53,7 @@ function readString(record: Record<string, unknown>, key: string, fallback = '')
 
 export function parseBackup(raw: string): BackupWorkspace[] {
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(raw);
   } catch {
@@ -53,6 +65,7 @@ export function parseBackup(raw: string): BackupWorkspace[] {
   }
 
   const { app, workspaces } = parsed as { app?: unknown; workspaces: unknown[] };
+
   if (app !== undefined && app !== BACKUP_APP_ID) {
     throw new ValidationError('That backup was not created by this app.');
   }
@@ -61,6 +74,7 @@ export function parseBackup(raw: string): BackupWorkspace[] {
     if (typeof item !== 'object' || item === null) {
       throw new ValidationError(`Workspace ${index + 1} in the backup is invalid.`);
     }
+
     const record = item as Record<string, unknown>;
     const tiers = Array.isArray(record.stackTiers) ? record.stackTiers : [];
     const mttStage = readString(record, 'mttStage');
