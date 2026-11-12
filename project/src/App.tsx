@@ -10,8 +10,8 @@ import WorkspaceNamePanel from '@/components/WorkspaceNamePanel';
 import { useWorkspaces } from '@/hooks/useWorkspaces';
 import { parseBackup, buildBackup } from '@/lib/backup';
 import { downloadJson } from '@/lib/download';
-import { ValidationError, parseStackPayload } from '@/lib/stackFile';
-import type { ChartMetadata, StackTier } from '@/types/chart';
+import { ValidationError, parseStackPayload, normalizeStackDepth } from '@/lib/stackFile';
+import type { ChartMetadata, StackTier, StackTierInput } from '@/types/chart';
 
 const NOTICE_DURATION_MS = 4000;
 
@@ -80,23 +80,53 @@ export default function App() {
   }
 
   const workspace = activeWorkspace;
+
   const handleRenameWorkspace = (name: string) =>
     runAction(() => store.renameWorkspace(workspace.id, name), 'Could not rename the workspace. Please try again.');
 
   const handleUpdateMetadata = (patch: Partial<ChartMetadata>) =>
     runAction(() => store.updateMetadata(workspace.id, patch), 'Could not save that change. Please try again.');
 
+  const importTiersWithConfirmation = async (tiers: StackTierInput[]): Promise<boolean> => {
+    const existingDepths = new Set(
+      workspace.stackTiers.map((tier) => normalizeStackDepth(tier.stackDepth)),
+    );
+
+    const replacementDepths = [...new Set(
+      tiers
+        .map((tier) => normalizeStackDepth(tier.stackDepth))
+        .filter((depth) => existingDepths.has(depth)),
+    )];
+
+    for (const depth of replacementDepths) {
+      const confirmed = window.confirm(
+        `A stack depth of ${depth}BB already exists. Would you like to replace it with the imported version?`,
+      );
+
+      if (!confirmed) return false;
+    }
+
+    await store.importTiers(workspace.id, tiers, replacementDepths.length > 0);
+    return true;
+  };
+
   const handleImportPaste = (text: string) =>
     runAction(async () => {
       const tiers = parseStackPayload(text, 'Pasted JSON');
-      await store.importTiers(workspace.id, tiers);
+      const imported = await importTiersWithConfirmation(tiers);
+
+      if (!imported) return;
+
       return `Imported ${pluralize(tiers.length, 'stack tier')}.`;
     }, 'Could not import the pasted JSON. Please try again.');
 
   const handleImportFiles = (files: PickedFile[]) =>
     runAction(async () => {
       const tiers = files.flatMap((file) => parseStackPayload(file.text, file.name));
-      await store.importTiers(workspace.id, tiers);
+      const imported = await importTiersWithConfirmation(tiers);
+
+      if (!imported) return;
+
       return `Imported ${pluralize(tiers.length, 'stack tier')}.`;
     }, 'Could not import those files. Please try again.');
 
