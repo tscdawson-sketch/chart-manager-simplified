@@ -4,36 +4,26 @@ import { normalizeStackDepth } from '@/lib/stackFile';
 export interface ValidationResult { errors: string[]; warnings: string[] }
 type Tier = Workspace['stackTiers'][number];
 
-const ACTIONS: Record<string, string> = {
-  F: 'fold', FOLD: 'fold', C: 'call', CALL: 'call', AI: 'all_in', ALL_IN: 'all_in',
-  'ALL-IN': 'all_in', SHOVE: 'all_in', PUSH: 'all_in', R: 'raise', RAISE: 'raise', R1: 'raise',
-  RAISE_2: 'raise_2', R2: 'raise_2', RAISE_3: 'raise_3', R3: 'raise_3',
-};
-
-function normalizeSizingKey(key: string): string {
-  const normalized = key.trim().toUpperCase().replace(/BB$/, '');
-  if (normalized === 'RAISE' || normalized === 'R') return 'R1';
-  if (normalized === 'RAISE_2') return 'R2';
-  if (normalized === 'RAISE_3') return 'R3';
-  return normalized;
-}
-
 function buildTier(tier: Tier): GlobalChartTier {
-  const ranges: Record<string, string[]> = {};
-  for (const [hand, action] of Object.entries(tier.hands)) {
-    const normalized = action.trim().toUpperCase();
-    const customRaise = normalized.match(/^R(\d+(?:\.\d+)?)(?:BB)?$/);
-    const actionKey = ACTIONS[normalized] ?? (customRaise ? `R${customRaise[1]}` : null);
-    const outputKey = actionKey ?? normalized.toLowerCase();
-    (ranges[outputKey] ??= []).push(hand);
-  }
+  const ranges: Record<string, string[]> = {
+    fold: [...tier.ranges.fold],
+    call: [...tier.ranges.call],
+    all_in: [...tier.ranges.all_in],
+    raise: [...tier.ranges.raise],
+    raise_2: [...tier.ranges.raise_2],
+    raise_3: [...tier.ranges.raise_3],
+  };
 
   const output: GlobalChartTier = { ranges };
+
   if (tier.sizings && Object.keys(tier.sizings).length) {
-    output.sizings = {};
-    for (const [key, value] of Object.entries(tier.sizings)) output.sizings[normalizeSizingKey(key)] = value;
+    output.sizings = { ...tier.sizings };
   }
-  if (tier.mixedStrategies && Object.keys(tier.mixedStrategies).length) output.mixedStrategies = tier.mixedStrategies;
+
+  if (tier.mixedStrategies && Object.keys(tier.mixedStrategies).length) {
+    output.mixedStrategies = { ...tier.mixedStrategies };
+  }
+
   return output;
 }
 
@@ -60,13 +50,16 @@ export function validateWorkspace(workspace: Workspace): ValidationResult {
 export function buildCombinedChart(workspace: Workspace): CombinedChart {
   const stackSize: CombinedChart['stack_size'] = {};
   const sorted = [...workspace.stackTiers].sort((a, b) => stackSortValue(b.stackDepth) - stackSortValue(a.stackDepth));
+
   for (const tier of sorted) {
     const key = `${normalizeStackDepth(tier.stackDepth)}BB`;
     const globalTier = buildTier(tier);
+
     stackSize[key] = workspace.format === 'mtt'
       ? { [workspace.mttStage as MttStage]: globalTier }
       : globalTier;
   }
+
   return {
     schemaVersion: 1,
     format: workspace.format as CombinedChart['format'],
