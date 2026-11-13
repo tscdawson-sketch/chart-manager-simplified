@@ -1,3 +1,4 @@
+
 import type { StackRanges, StackTierInput } from '@/types/chart';
 
 export class ValidationError extends Error {}
@@ -38,13 +39,13 @@ export function toStackTierFile(tier: StackTierInput): StackTierInput {
   };
 }
 
-export function validateStackTier(item: unknown, filename: string): StackTierInput {
+export function validateStackTier(item: unknown, filename: string, stackDepthOverride?: string): StackTierInput {
   if (typeof item !== 'object' || item === null || Array.isArray(item)) {
     throw new ValidationError(`${filename} does not contain a stack depth object.`);
   }
 
   const record = item as Record<string, unknown>;
-  const stackDepth = validateStackDepth(record.stackDepth, filename);
+  const stackDepth = validateStackDepth(stackDepthOverride ?? record.stackDepth, filename);
 
   if (typeof record.ranges !== 'object' || record.ranges === null || Array.isArray(record.ranges)) {
     throw new ValidationError(`${filename} needs a ranges object.`);
@@ -63,33 +64,26 @@ export function validateStackTier(item: unknown, filename: string): StackTierInp
     ranges[key] = hands.map((hand: string) => hand.trim());
   }
 
-  if (typeof record.sizings !== 'object' || record.sizings === null || Array.isArray(record.sizings)) {
-    throw new ValidationError(`${filename} needs a sizings object.`);
-  }
-
-  const sourceSizings = record.sizings as Record<string, unknown>;
+  const sourceSizings = typeof record.sizings === 'object' && record.sizings !== null && !Array.isArray(record.sizings)
+    ? record.sizings as Record<string, unknown>
+    : {};
   const sizings: Record<string, string> = {};
 
   for (const key of SIZING_KEYS) {
     const value = sourceSizings[key];
-
-    if (typeof value !== 'string') {
-      throw new ValidationError(`${filename} needs a valid sizing value for ${key}.`);
-    }
-
-    sizings[key] = value.trim();
+    if (typeof value === 'string') sizings[key] = value.trim();
   }
 
-  if (typeof record.mixedStrategies !== 'object' || record.mixedStrategies === null || Array.isArray(record.mixedStrategies)) {
-    throw new ValidationError(`${filename} needs a mixedStrategies object.`);
-  }
+  const mixedStrategies = typeof record.mixedStrategies === 'object' && record.mixedStrategies !== null && !Array.isArray(record.mixedStrategies)
+    ? record.mixedStrategies as Record<string, unknown>
+    : {};
 
   return {
     stackDepth,
     filename: typeof record.filename === 'string' && record.filename ? record.filename : filename,
     ranges,
     sizings,
-    mixedStrategies: record.mixedStrategies as Record<string, unknown>,
+    mixedStrategies,
   };
 }
 
@@ -100,6 +94,18 @@ export function parseStackPayload(raw: string, filename: string): StackTierInput
     parsed = JSON.parse(raw);
   } catch {
     throw new ValidationError(`${filename} is not valid JSON.`);
+  }
+
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+    const record = parsed as Record<string, unknown>;
+
+    if (!('stackDepth' in record) && !('ranges' in record)) {
+      const entries = Object.entries(record);
+
+      if (!entries.length) throw new ValidationError(`${filename} contains no stack depths.`);
+
+      return entries.map(([stackDepth, tier]) => validateStackTier(tier, filename, stackDepth));
+    }
   }
 
   const items = Array.isArray(parsed) ? parsed : [parsed];
